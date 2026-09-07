@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>推しカラー生成ウィジェット</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=Space+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ECE9E4;
+    --card:#FFFFFF;
+    --ink:#2E2A26;
+    --taupe:#8A7A63;
+    --taupe-soft:#A79A85;
+    --pill:#C7D2E0;
+    --pill-ink:#3C4A5C;
+    --pill-hover:#B9C7D9;
+    --line:#E4E1DB;
+    --mono:'Space Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background-color:var(--paper);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    font-family:'Noto Sans JP', sans-serif;
+    color:var(--ink);
+    padding:48px 24px 80px;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+  header{margin-bottom:36px;}
+  h1{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-weight:700;
+    font-size:clamp(28px,4vw,40px);
+    color:var(--taupe);
+    margin:0 0 6px;
+    letter-spacing:0.02em;
+  }
+  .subtitle{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-weight:500;
+    font-size:16px;
+    color:var(--taupe-soft);
+    margin:0;
+  }
+  .panels{
+    display:grid;
+    grid-template-columns:minmax(280px,360px) 1fr;
+    gap:28px;
+    align-items:start;
+  }
+  @media (max-width:760px){
+    .panels{grid-template-columns:1fr;}
+  }
+  .card{
+    background:var(--card);
+    border-radius:20px;
+    box-shadow:0 10px 30px rgba(60,50,40,0.08);
+    padding:24px;
+  }
+  /* --- SV box + hue slider --- */
+  .sv-box{
+    position:relative;
+    width:100%;
+    height:170px;
+    border-radius:14px;
+    cursor:crosshair;
+    touch-action:none;
+    background:
+      linear-gradient(to top, #000, rgba(0,0,0,0)),
+      linear-gradient(to right, #fff, rgba(255,255,255,0)),
+      hsl(120,100%,50%);
+    overflow:hidden;
+  }
+  .sv-cursor{
+    position:absolute;
+    width:16px;height:16px;
+    border-radius:50%;
+    border:2px solid #fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.35);
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+  }
+  .hue-slider{
+    position:relative;
+    width:100%;
+    height:14px;
+    margin-top:14px;
+    border-radius:7px;
+    cursor:pointer;
+    touch-action:none;
+    background:linear-gradient(to right,
+      #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  }
+  .hue-cursor{
+    position:absolute;
+    top:50%;
+    width:20px;height:20px;
+    border-radius:50%;
+    background:#fff;
+    border:2px solid #fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.3);
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+  }
+  /* --- slots --- */
+  .slots{margin-top:20px;display:flex;flex-direction:column;gap:10px;}
+  .slot{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:#F7F5F2;
+    border:2px solid transparent;
+    border-radius:12px;
+    padding:8px 10px;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .slot.active{border-color:var(--pill-ink);background:#F0EEE9;}
+  .slot .chip{
+    width:26px;height:26px;border-radius:50%;
+    flex:none;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);
+  }
+  .slot input{
+    border:none;
+    background:transparent;
+    font-family:var(--mono);
+    font-size:15px;
+    color:var(--ink);
+    width:100%;
+    outline:none;
+    text-transform:lowercase;
+  }
+  .slot input.invalid{color:#B23A3A;}
+  /* --- actions --- */
+  .actions{display:flex;gap:12px;margin-top:22px;}
+  button{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    border:none;
+    border-radius:999px;
+    padding:12px 0;
+    flex:1;
+    cursor:pointer;
+    background:var(--pill);
+    color:var(--pill-ink);
+    transition:background .15s ease, transform .1s ease;
+  }
+  button:hover{background:var(--pill-hover);}
+  button:active{transform:scale(0.97);}
+  button#resetBtn{background:#E4E1DB;color:#6B6459;}
+  button#resetBtn:hover{background:#D9D5CC;}
+  button:disabled{opacity:0.45;cursor:not-allowed;}
+  /* --- output card --- */
+  .output-card{min-height:170px;}
+  .placeholder{
+    color:var(--taupe-soft);
+    font-size:15px;
+    margin:8px 4px;
+  }
+  #paletteName{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-size:18px;
+    font-weight:700;
+    color:var(--taupe);
+    margin:0 0 14px;
+  }
+  .color-bar{
+    display:flex;
+    height:64px;
+    border-radius:12px;
+    overflow:hidden;
+    margin-bottom:22px;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,0.06);
+  }
+  .color-bar span{flex:1;}
+  .formula-list{display:flex;flex-direction:column;}
+  .formula-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:12px 4px;
+    border-top:1px solid var(--line);
+  }
+  .formula-row:first-child{border-top:none;}
+  .formula-text{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    flex-wrap:wrap;
+    min-width:0;
+  }
+  .formula-code{
+    font-family:var(--mono);
+    font-size:14px;
+    font-weight:700;
+    color:var(--ink);
+    background:#F7F5F2;
+    padding:5px 10px;
+    border-radius:8px;
+    white-space:nowrap;
+  }
+  .formula-desc{
+    font-size:14px;
+    color:var(--taupe-soft);
+    white-space:nowrap;
+  }
+  .copy-btn{
+    flex:none;
+    width:auto;
+    padding:7px 16px;
+    font-size:13px;
+    background:#F0EEE9;
+    color:var(--pill-ink);
+    position:relative;
+  }
+  .copy-btn:hover{background:#E4E1DB;}
+  .copy-btn.copied{background:#CFE3D6;color:#2F5D42;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>推しカラー生成ウィジェット</h1>
+    <p class="subtitle">Notionを推し色に染めよう</p>
+  </header>
+
+  <div class="panels">
+    <section class="card">
+      <div class="sv-box" id="svBox"><div class="sv-cursor" id="svCursor"></div></div>
+      <div class="hue-slider" id="hueSlider"><div class="hue-cursor" id="hueCursor"></div></div>
+
+      <div class="slots" id="slots"></div>
+
+      <div class="actions">
+        <button id="generateBtn">生成</button>
+        <button id="resetBtn">リセット</button>
+      </div>
+    </section>
+
+    <section class="card output-card">
+      <p class="placeholder" id="placeholder">「生成」を押すとパレットができるよ</p>
+      <div id="outputContent" hidden>
+        <h2 id="paletteName">Palette</h2>
+        <div class="color-bar" id="colorBar"></div>
+        <div class="formula-list" id="formulaList"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DEFAULT_COLORS = ["#689059","#2d3223","#5f7434","#615399"];
+  let colors = DEFAULT_COLORS.slice();
+  let activeSlot = 0;
+  let hue = 0, sat = 0, val = 0;
+
+  const svBox = document.getElementById('svBox');
+  const svCursor = document.getElementById('svCursor');
+  const hueSlider = document.getElementById('hueSlider');
+  const hueCursor = document.getElementById('hueCursor');
+  const slotsEl = document.getElementById('slots');
+  const generateBtn = document.getElementById('generateBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const placeholder = document.getElementById('placeholder');
+  const outputContent = document.getElementById('outputContent');
+  const paletteNameEl = document.getElementById('paletteName');
+  const colorBarEl = document.getElementById('colorBar');
+  const formulaListEl = document.getElementById('formulaList');
+
+  // ---------- color conversion ----------
+  function hexToRgb(hex){
+    hex = hex.replace('#','');
+    if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+    const num = parseInt(hex,16);
+    return { r:(num>>16)&255, g:(num>>8)&255, b:num&255 };
+  }
+  function rgbToHex(r,g,b){
+    return '#' + [r,g,b].map(v=>{
+      const h = Math.max(0,Math.min(255,Math.round(v))).toString(16);
+      return h.length===1 ? '0'+h : h;
+    }).join('');
+  }
+  function rgbToHsv(r,g,b){
+    r/=255; g/=255; b/=255;
+    const max=Math.max(r,g,b), min=Math.min(r,g,b);
+    const d = max-min;
+    let h=0;
+    if(d!==0){
+      if(max===r) h = ((g-b)/d) % 6;
+      else if(max===g) h = (b-r)/d + 2;
+      else h = (r-g)/d + 4;
+      h *= 60;
+      if(h<0) h += 360;
+    }
+    const s = max===0 ? 0 : d/max;
+    const v = max;
+    return { h, s, v };
+  }
+  function hsvToRgb(h,s,v){
+    const c = v*s;
+    const x = c*(1-Math.abs((h/60)%2-1));
+    const m = v-c;
+    let r=0,g=0,b=0;
+    if(h<60){r=c;g=x;b=0;}
+    else if(h<120){r=x;g=c;b=0;}
+    else if(h<180){r=0;g=c;b=x;}
+    else if(h<240){r=0;g=x;b=c;}
+    else if(h<300){r=x;g=0;b=c;}
+    else {r=c;g=0;b=x;}
+    return { r:(r+m)*255, g:(g+m)*255, b:(b+m)*255 };
+  }
+  function hexToHsv(hex){
+    const {r,g,b} = hexToRgb(hex);
+    return rgbToHsv(r,g,b);
+  }
+  function hsvToHex(h,s,v){
+    const {r,g,b} = hsvToRgb(h,s,v);
+    return rgbToHex(r,g,b);
+  }
+  function isValidHex(v){
+    return /^#?[0-9a-fA-F]{6}$/.test(v);
+  }
+  function normalizeHex(v){
+    v = v.trim();
+    if(!v.startsWith('#')) v = '#' + v;
+    return v.toLowerCase();
+  }
+
+  // ---------- slots UI ----------
+  function renderSlots(){
+    slotsEl.innerHTML = '';
+    colors.forEach((hex, i)=>{
+      const row = document.createElement('div');
+      row.className = 'slot' + (i===activeSlot ? ' active' : '');
+      row.dataset.index = i;
+
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.style.background = hex;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = hex;
+      input.maxLength = 7;
+
+      row.appendChild(chip);
+      row.appendChild(input);
+      slotsEl.appendChild(row);
+
+      row.addEventListener('click', (e)=>{
+        if(e.target === input) return;
+        setActiveSlot(i);
+      });
+      input.addEventListener('focus', ()=> setActiveSlot(i, false));
+      input.addEventListener('input', ()=>{
+        const raw = input.value;
+        if(isValidHex(raw)){
+          input.classList.remove('invalid');
+          const norm = normalizeHex(raw);
+          colors[i] = norm;
+          chip.style.background = norm;
+          if(i === activeSlot){
+            const hsv = hexToHsv(norm);
+            hue = hsv.h; sat = hsv.s; val = hsv.v;
+            updateSvBoxBackground();
+            positionCursors();
+          }
+        } else {
+          input.classList.add('invalid');
+        }
+      });
+    });
+  }
+
+  function setActiveSlot(i, syncPicker=true){
+    activeSlot = i;
+    [...slotsEl.children].forEach((row,idx)=>{
+      row.classList.toggle('active', idx===i);
+    });
+    if(syncPicker){
+      const hsv = hexToHsv(colors[i]);
+      hue = hsv.h; sat = hsv.s; val = hsv.v;
+      updateSvBoxBackground();
+      positionCursors();
+    }
+  }
+
+  function applyColorToActiveSlot(){
+    const hex = hsvToHex(hue, sat, val);
+    colors[activeSlot] = hex;
+    const row = slotsEl.children[activeSlot];
+    if(row){
+      row.querySelector('.chip').style.background = hex;
+      const input = row.querySelector('input');
+      input.value = hex;
+      input.classList.remove('invalid');
+    }
+  }
+
+  // ---------- SV box + hue slider interaction ----------
+  function updateSvBoxBackground(){
+    svBox.style.background =
+      'linear-gradient(to top, #000, rgba(0,0,0,0)),' +
+      'linear-gradient(to right, #fff, rgba(255,255,255,0)),' +
+      'hsl(' + hue + ',100%,50%)';
+  }
+  function positionCursors(){
+    const svRect = { w: svBox.clientWidth, h: svBox.clientHeight };
+    svCursor.style.left = (sat*svRect.w) + 'px';
+    svCursor.style.top = ((1-val)*svRect.h) + 'px';
+    const hueRect = { w: hueSlider.clientWidth };
+    hueCursor.style.left = ((hue/360)*hueRect.w) + 'px';
+  }
+
+  function svPointerHandler(e){
+    const rect = svBox.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    x = Math.max(0, Math.min(rect.width, x));
+    y = Math.max(0, Math.min(rect.height, y));
+    sat = x / rect.width;
+    val = 1 - (y / rect.height);
+    svCursor.style.left = x + 'px';
+    svCursor.style.top = y + 'px';
+    applyColorToActiveSlot();
+  }
+  function huePointerHandler(e){
+    const rect = hueSlider.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    x = Math.max(0, Math.min(rect.width, x));
+    hue = (x / rect.width) * 360;
+    hueCursor.style.left = x + 'px';
+    updateSvBoxBackground();
+    applyColorToActiveSlot();
+  }
+
+  function attachDrag(el, handler){
+    el.addEventListener('pointerdown', (e)=>{
+      el.setPointerCapture(e.pointerId);
+      handler(e);
+      const move = (ev)=> handler(ev);
+      const up = (ev)=>{
+        el.removeEventListener('pointermove', move);
+        el.removeEventListener('pointerup', up);
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+    });
+  }
+  attachDrag(svBox, svPointerHandler);
+  attachDrag(hueSlider, huePointerHandler);
+
+  // ---------- palette name ----------
+  const ADJ = ["幻想の","深緑の","黄昏の","群青の","静寂の","琥珀の","薄明の","深海の","星屑の","蜜月の","朝霧の","晩夏の","翠玉の","真夜中の","陽だまりの","残響の","霧氷の","茜色の"];
+  const NOUN = ["森","刻","調","詩","庭","灯","譚","波","声","欠片","記憶","余韻","狭間","轍","残響","小径","花園","航路"];
+  function randomPaletteName(){
+    const a = ADJ[Math.floor(Math.random()*ADJ.length)];
+    const n = NOUN[Math.floor(Math.random()*NOUN.length)];
+    return a + n;
+  }
+
+  // ---------- formula templates ----------
+  const FORMULAS = [
+    { code: '\\color{HEX}Day', desc: 'テキストを変更' },
+    { code: '\\colorbox{HEX}{ }', desc: 'カラーボックス出現' },
+    { code: '\\colorbox{HEX}{任意テキスト}', desc: '見出しをつける' },
+    { code: '\\color{#FFFFFF}{\\colorbox{HEX}{TEXT}}', desc: 'ラベルを作る' },
+    { code: '\\color{HEX}\\rule{◯px}{◯px}', desc: 'ラインを引く' },
+    { code: '\\colorbox{HEX}{\\phantom{MMMMMM}}', desc: '色見本長方形を作る' },
+    { code: '\\color{HEX}{\\bullet}', desc: 'ドットをつくるよ' }
+  ];
+
+  function renderOutput(){
+    placeholder.hidden = true;
+    outputContent.hidden = false;
+    paletteNameEl.textContent = randomPaletteName();
+
+    colorBarEl.innerHTML = '';
+    colors.forEach(hex=>{
+      const span = document.createElement('span');
+      span.style.background = hex;
+      colorBarEl.appendChild(span);
+    });
+
+    formulaListEl.innerHTML = '';
+    FORMULAS.forEach(f=>{
+      const row = document.createElement('div');
+      row.className = 'formula-row';
+
+      const textWrap = document.createElement('div');
+      textWrap.className = 'formula-text';
+      const code = document.createElement('span');
+      code.className = 'formula-code';
+      code.textContent = f.code;
+      const desc = document.createElement('span');
+      desc.className = 'formula-desc';
+      desc.textContent = f.desc;
+      textWrap.appendChild(code);
+      textWrap.appendChild(desc);
+
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'コピー';
+      btn.addEventListener('click', ()=>{
+        navigator.clipboard.writeText(f.code).then(()=>{
+          const original = btn.textContent;
+          btn.textContent = 'コピー済み';
+          btn.classList.add('copied');
+          setTimeout(()=>{
+            btn.textContent = original;
+            btn.classList.remove('copied');
+          }, 1400);
+        });
+      });
+
+      row.appendChild(textWrap);
+      row.appendChild(btn);
+      formulaListEl.appendChild(row);
+    });
+  }
+
+  function resetAll(){
+    colors = DEFAULT_COLORS.slice();
+    activeSlot = 0;
+    renderSlots();
+    setActiveSlot(0);
+    placeholder.hidden = false;
+    outputContent.hidden = true;
+  }
+
+  generateBtn.addEventListener('click', renderOutput);
+  resetBtn.addEventListener('click', resetAll);
+
+  // ---------- init ----------
+  renderSlots();
+  setActiveSlot(0);
+  window.addEventListener('resize', positionCursors);
+})();
+</script>
+</body>
+</html>
