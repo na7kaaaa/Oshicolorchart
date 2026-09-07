@@ -126,6 +126,13 @@
     flex:none;
     box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);
   }
+  .slot-main{display:flex;flex-direction:column;flex:1;min-width:0;gap:1px;}
+  .slot-label{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-size:11px;
+    font-weight:500;
+    color:var(--taupe-soft);
+  }
   .slot input{
     border:none;
     background:transparent;
@@ -135,8 +142,20 @@
     width:100%;
     outline:none;
     text-transform:lowercase;
+    padding:0;
   }
   .slot input.invalid{color:#B23A3A;}
+  .slot-copy{
+    flex:none;
+    width:30px;height:30px;
+    padding:0;
+    border-radius:50%;
+    font-size:14px;
+    background:#EDEAE4;
+    color:var(--pill-ink);
+  }
+  .slot-copy:hover{background:#E0DCD3;}
+  .slot-copy.copied{background:#CFE3D6;color:#2F5D42;}
   /* --- actions --- */
   .actions{display:flex;gap:12px;margin-top:22px;}
   button{
@@ -173,13 +192,43 @@
   }
   .color-bar{
     display:flex;
-    height:64px;
+    height:78px;
     border-radius:12px;
     overflow:hidden;
-    margin-bottom:22px;
     box-shadow:inset 0 0 0 1px rgba(0,0,0,0.06);
   }
-  .color-bar span{flex:1;}
+  .color-bar button{
+    flex:1;
+    border:none;
+    border-radius:0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    cursor:pointer;
+    box-shadow:inset 0 0 0 3px transparent;
+    transition:box-shadow .15s ease;
+  }
+  .color-bar button.selected{
+    box-shadow:inset 0 0 0 3px rgba(255,255,255,0.9);
+  }
+  .color-bar .bar-label{
+    font-family:'Zen Maru Gothic', sans-serif;
+    font-size:12px;
+    font-weight:700;
+  }
+  .color-bar .bar-hex{
+    font-family:var(--mono);
+    font-size:11px;
+    opacity:0.85;
+  }
+  .color-hint{
+    font-size:12px;
+    color:var(--taupe-soft);
+    margin:10px 0 22px;
+  }
   .formula-list{display:flex;flex-direction:column;}
   .formula-row{
     display:flex;
@@ -250,6 +299,7 @@
       <div id="outputContent" hidden>
         <h2 id="paletteName">Palette</h2>
         <div class="color-bar" id="colorBar"></div>
+        <p class="color-hint">色をタップすると、下の数式のHEXがその色に置き換わります</p>
         <div class="formula-list" id="formulaList"></div>
       </div>
     </section>
@@ -336,6 +386,13 @@
   }
 
   // ---------- slots UI ----------
+  const USAGE_LABELS = ["メイン","見出し","アクセント","差し色"];
+
+  function relativeLuminance(hex){
+    const {r,g,b} = hexToRgb(hex);
+    return (0.299*r + 0.587*g + 0.114*b) / 255;
+  }
+
   function renderSlots(){
     slotsEl.innerHTML = '';
     colors.forEach((hex, i)=>{
@@ -347,13 +404,41 @@
       chip.className = 'chip';
       chip.style.background = hex;
 
+      const main = document.createElement('div');
+      main.className = 'slot-main';
+
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      label.textContent = USAGE_LABELS[i] || '';
+
       const input = document.createElement('input');
       input.type = 'text';
       input.value = hex;
       input.maxLength = 7;
 
+      main.appendChild(label);
+      main.appendChild(input);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'slot-copy';
+      copyBtn.type = 'button';
+      copyBtn.textContent = '⧉';
+      copyBtn.title = 'このHEXをコピー';
+      copyBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        navigator.clipboard.writeText(colors[i]).then(()=>{
+          copyBtn.textContent = '✓';
+          copyBtn.classList.add('copied');
+          setTimeout(()=>{
+            copyBtn.textContent = '⧉';
+            copyBtn.classList.remove('copied');
+          }, 1200);
+        });
+      });
+
       row.appendChild(chip);
-      row.appendChild(input);
+      row.appendChild(main);
+      row.appendChild(copyBtn);
       slotsEl.appendChild(row);
 
       row.addEventListener('click', (e)=>{
@@ -462,9 +547,19 @@
   // ---------- palette name ----------
   const ADJ = ["幻想の","深緑の","黄昏の","群青の","静寂の","琥珀の","薄明の","深海の","星屑の","蜜月の","朝霧の","晩夏の","翠玉の","真夜中の","陽だまりの","残響の","霧氷の","茜色の"];
   const NOUN = ["森","刻","調","詩","庭","灯","譚","波","声","欠片","記憶","余韻","狭間","轍","残響","小径","花園","航路"];
-  function randomPaletteName(){
-    const a = ADJ[Math.floor(Math.random()*ADJ.length)];
-    const n = NOUN[Math.floor(Math.random()*NOUN.length)];
+  function hashString(str){
+    let h = 0;
+    for(let i=0; i<str.length; i++){
+      h = (h * 31 + str.charCodeAt(i)) | 0;
+    }
+    return h >>> 0;
+  }
+  function paletteNameForColors(colorList){
+    const key = colorList.join(',').toLowerCase();
+    const adjHash = hashString(key + '::adj');
+    const nounHash = hashString(key + '::noun');
+    const a = ADJ[adjHash % ADJ.length];
+    const n = NOUN[nounHash % NOUN.length];
     return a + n;
   }
 
@@ -479,20 +574,51 @@
     { code: '\\color{HEX}{\\bullet}', desc: 'ドットをつくるよ' }
   ];
 
+  let selectedFormulaSlot = 0;
+
   function renderOutput(){
     placeholder.hidden = true;
     outputContent.hidden = false;
-    paletteNameEl.textContent = randomPaletteName();
+    paletteNameEl.textContent = paletteNameForColors(colors);
+    selectedFormulaSlot = 0;
 
+    renderColorBar();
+    renderFormulas();
+  }
+
+  function renderColorBar(){
     colorBarEl.innerHTML = '';
-    colors.forEach(hex=>{
-      const span = document.createElement('span');
-      span.style.background = hex;
-      colorBarEl.appendChild(span);
-    });
+    colors.forEach((hex,i)=>{
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = (i===selectedFormulaSlot) ? 'selected' : '';
+      btn.style.background = hex;
+      const textColor = relativeLuminance(hex) > 0.6 ? '#2E2A26' : '#FFFFFF';
+      btn.style.color = textColor;
 
+      const labelEl = document.createElement('span');
+      labelEl.className = 'bar-label';
+      labelEl.textContent = USAGE_LABELS[i] || '';
+      const hexEl = document.createElement('span');
+      hexEl.className = 'bar-hex';
+      hexEl.textContent = hex;
+
+      btn.appendChild(labelEl);
+      btn.appendChild(hexEl);
+      btn.addEventListener('click', ()=>{
+        selectedFormulaSlot = i;
+        renderColorBar();
+        renderFormulas();
+      });
+      colorBarEl.appendChild(btn);
+    });
+  }
+
+  function renderFormulas(){
+    const activeHex = '#' + colors[selectedFormulaSlot].replace('#','').toUpperCase();
     formulaListEl.innerHTML = '';
     FORMULAS.forEach(f=>{
+      const substituted = f.code.split('HEX').join(activeHex);
       const row = document.createElement('div');
       row.className = 'formula-row';
 
@@ -500,7 +626,7 @@
       textWrap.className = 'formula-text';
       const code = document.createElement('span');
       code.className = 'formula-code';
-      code.textContent = f.code;
+      code.textContent = substituted;
       const desc = document.createElement('span');
       desc.className = 'formula-desc';
       desc.textContent = f.desc;
@@ -511,7 +637,7 @@
       btn.className = 'copy-btn';
       btn.textContent = 'コピー';
       btn.addEventListener('click', ()=>{
-        navigator.clipboard.writeText(f.code).then(()=>{
+        navigator.clipboard.writeText(substituted).then(()=>{
           const original = btn.textContent;
           btn.textContent = 'コピー済み';
           btn.classList.add('copied');
