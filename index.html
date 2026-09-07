@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>推しカラー生成ウィジェット</title>
+<title>推しカラー生成</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=Space+Mono&display=swap" rel="stylesheet">
@@ -385,6 +385,39 @@
     return v.toLowerCase();
   }
 
+  // ---------- clipboard (with iframe-safe fallback) ----------
+  function legacyCopy(text){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try{
+      ok = document.execCommand('copy');
+    }catch(e){
+      ok = false;
+    }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function copyText(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(text).catch(()=>{
+        if(!legacyCopy(text)) throw new Error('copy failed');
+      });
+    }
+    return new Promise((resolve, reject)=>{
+      if(legacyCopy(text)) resolve(); else reject(new Error('copy failed'));
+    });
+  }
+
   // ---------- slots UI ----------
   const USAGE_LABELS = ["メイン","見出し","アクセント","差し色"];
 
@@ -426,13 +459,16 @@
       copyBtn.title = 'このHEXをコピー';
       copyBtn.addEventListener('click', (e)=>{
         e.stopPropagation();
-        navigator.clipboard.writeText(colors[i]).then(()=>{
+        copyText(colors[i]).then(()=>{
           copyBtn.textContent = '✓';
           copyBtn.classList.add('copied');
           setTimeout(()=>{
             copyBtn.textContent = '⧉';
             copyBtn.classList.remove('copied');
           }, 1200);
+        }).catch(()=>{
+          copyBtn.textContent = '✕';
+          setTimeout(()=>{ copyBtn.textContent = '⧉'; }, 1200);
         });
       });
 
@@ -565,7 +601,7 @@
 
   // ---------- formula templates ----------
   const FORMULAS = [
-    { code: '\\color{HEX}任意テキスト', desc: 'テキストを変更' },
+    { code: '\\color{HEX}Day', desc: 'テキストを変更' },
     { code: '\\colorbox{HEX}{ }', desc: 'カラーボックス出現' },
     { code: '\\colorbox{HEX}{任意テキスト}', desc: '見出しをつける' },
     { code: '\\color{#FFFFFF}{\\colorbox{HEX}{TEXT}}', desc: 'ラベルを作る' },
@@ -637,7 +673,7 @@
       btn.className = 'copy-btn';
       btn.textContent = 'コピー';
       btn.addEventListener('click', ()=>{
-        navigator.clipboard.writeText(substituted).then(()=>{
+        copyText(substituted).then(()=>{
           const original = btn.textContent;
           btn.textContent = 'コピー済み';
           btn.classList.add('copied');
@@ -645,6 +681,10 @@
             btn.textContent = original;
             btn.classList.remove('copied');
           }, 1400);
+        }).catch(()=>{
+          const original = btn.textContent;
+          btn.textContent = 'コピー失敗';
+          setTimeout(()=>{ btn.textContent = original; }, 1400);
         });
       });
 
